@@ -1,9 +1,9 @@
 FROM debian:jessie
 MAINTAINER Pablo Montepagano <pablo@montepagano.com.ar>
+ENV http_proxy http://proxy.fcen.uba.ar:8080/
 
 # Update the package repository
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
-	DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && \
 	DEBIAN_FRONTEND=noninteractive apt-get install -y wget curl locales
 
 # Configure timezone and locale
@@ -20,22 +20,19 @@ RUN export LANGUAGE=en_US.UTF-8 && \
 RUN apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa tesseract-ocr-spa-old tesseract-ocr-equ
 
 ## Para compilar Scantailor enhanced. https://github.com/scantailor/scantailor/wiki/Building-from-Source-Code-on-Linux-and-Mac-OS-X
-RUN apt-get install -y build-essential cmake checkinstall
+RUN apt-get install -y build-essential cmake checkinstall git
 RUN apt-get install -y --no-install-recommends libqt4-dev
 RUN apt-get install -y libjpeg-dev libtiff5-dev libpng12-dev zlib1g-dev libboost-all-dev libxrender-dev
-
-## Compilar:
-# git clone https://github.com/scantailor/scantailor.git
-# cd scantailor
-# git checkout enhanced
-# cmake .
-# make
-# checkinstall
+# Compilar:
+RUN git clone https://github.com/scantailor/scantailor.git /usr/src/scantailor
+WORKDIR /usr/src/scantailor
+RUN git checkout enhanced && cmake . && make && checkinstall -y
 
 
 ## PDFBeads
-RUN apt-get install -y ruby ruby-dev ruby-rmagick
-RUN gem install pdfbeads
+RUN apt-get install -y ruby ruby-dev ruby-rmagick automake libleptonica-dev ruby-full
+## FALTA JBIG2ENC
+RUN gem install pdfbeads iconv
 
 ## ImageMagick
 RUN apt-get install -y --no-install-recommends imagemagick
@@ -48,6 +45,6 @@ RUN apt-get install exactimage
 
 
 
-ADD start.sh /start.sh
-RUN chmod 0755 /start.sh
-CMD ["bash", "start.sh"]
+ADD fcen-postprocessing /fcen-postprocessing
+RUN chmod 0755 /fcen-postprocessing
+CMD ["bash"]
