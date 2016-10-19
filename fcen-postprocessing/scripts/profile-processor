@@ -105,6 +105,9 @@ INCLUDE_LIST=""
 EXCLUDE_LIST=""
 IMGIMPROVE_LIST=""
 CLEAR=""
+SCANTAILOR_DISABLED=""
+INPUT_EXT=""
+DEBUG=""
 
 # ==================================== processing arguments ===================================
 
@@ -145,17 +148,77 @@ while [ $# -ne 0 ]
         imgimprove=*)
             IMGIMPROVE_LIST="${arg#*=}"
             ;;
+        sct=*)
+            SCT_NAME="${arg#*=}"
+            ;;
+        debug)
+            DEBUG="Yes"
+            ;;
+        pretty-format)
+            paramArr+=('pretty-format')
+            ;;
         no-ocr)
-            paramArr+=('tesseract-not-overwrite')
+            paramArr+=('tesseract-disabled')
             ;;
         no-overwrite-ocr)
+            paramArr+=('tesseract-not-overwrite')
+            ;;
+        no-scantailor)
+            paramArr+=('scantailor-disabled')
+            SCANTAILOR_DISABLED="Yes"
+            ;;
+        scantailor-save-project)
+            paramArr+=('scantailor-save-project')
+            ;;
+        scantailor-load-project) # load project from sct=* or default scantailor project localization
+                                 # (same as pdf path/name but .scantailor extension)
+            paramArr+=('scantailor-load-project')
+            ;;
+        scantailor-process-and-exit)
+            paramArr+=("scantailor-process-and-exit")
+            ;;
+        scantailor-filters=*)
+            paramArr+=("scantailor-filters=${arg#*=}")
+            ;;
+        compile-pdf-only)
             paramArr+=('tesseract-disabled')
+            paramArr+=('scantailor-disabled')
+            SCANTAILOR_DISABLED="Yes"
+            ;;
+        reoptimize-pdf)
+            paramArr+=('pdfbeads-clear')
+            ;;
+        pdfbeads-force)
+            paramArr+=('pdfbeads-force')
+            ;;
+        pdfbeads-holds-procfiles)
+            paramArr+=('pdfbeads-holds-procfiles')
+            ;;
+        pdf-layout=*)
+            paramArr+=("pdfbeads-layout=${arg#*=}")
+            ;;
+        no-compile-pdf)
+            paramArr+=('pdfbeads-disabled')
+            ;;
+        follow-symbolic-links)
+            paramArr+=('follow-symbolic-links')
+            ;;
+        clear-tmp)
+            paramArr+=('clear-tmp')
+            CLEAR="Yes"
+            ;;
+        clear-pdf)
+            paramArr+=('clear-pdf')
+            CLEAR="Yes"
+            ;;
+        clear-scantailor)
+            paramArr+=('clear-scantailor')
+            CLEAR="Yes"
             ;;
         clear)
             paramArr+=('clear')
             CLEAR="Yes"
             ;;
-
     esac
     shift
   done           
@@ -183,25 +246,31 @@ fi
 [[ "$WRK_PATH" != "" ]] && paramArr+=("wrk=$WRK_PATH")
 [[ "$LOG_PATH" != "" ]] && paramArr+=("log=$LOG_PATH")
 [[ "$OUT_PATH" != "" ]] && paramArr+=("out=$OUT_PATH")
+[[ "$SCT_NAME" != "" ]] && paramArr+=("sct=$SCT_NAME")
 
+if [ ! -z "$INPUT_EXT" ]
+ then paramArr+=("input-extension=$INPUT_EXT")
+fi
 
 # ====================================== process profiles =====================================
 
-if [ "$PROFILE_LIST" == "" ]
-  then
-     paramArr+=('layout-onepage')
-     paramArr+=('content-detection-disabled')
-     paramArr+=("color-mode=black_and_white")
-     paramArr+=('picture-shape=rectangular')
-else
-     IFS="," read -ra profileArr <<< "$PROFILE_LIST"
+if [ "$SCANTAILOR_DISABLED" != "Yes" ]
+ then
+   if [ "$PROFILE_LIST" == "" ]
+    then
+      paramArr+=('layout-onepage')
+      paramArr+=('content-detection-disabled')
+      paramArr+=("color-mode=black_and_white")
+      paramArr+=('picture-shape=rectangular')
+   else
+      IFS="," read -ra profileArr <<< "$PROFILE_LIST"
 
-     #basic option
-     paramArr+=('content-detection-disabled')
-     paramArr+=("color-mode=black_and_white")
-     paramArr+=('picture-shape=rectangular')
-
-     for profile in "${profileArr[@]}"
+      #basic option
+      paramArr+=('content-detection-disabled')
+      paramArr+=("color-mode=black_and_white")
+      paramArr+=('picture-shape=rectangular')
+ 
+      for profile in "${profileArr[@]}"
        do
          case "$profile" in
            a1)
@@ -242,13 +311,30 @@ else
            g2)
                paramArr+=('filter-invertlevels')
                ;;
+           q1) # forced color-mixed
+               paramArr_Del 'color-mode=black_and_white'
+               paramArr_Del 'color-mode=color_grayscale'
+               paramArr+=('color-mode=mixed')
+               ;;
+           q2) # forced color_grayscale
+               paramArr_Del 'color-mode=black_and_white'
+               paramArr_Del 'color-mode=mixed'
+               paramArr+=('color-mode=color_grayscale')
+               ;;
+           q3) # forced color_grayscale normalize illumination
+               paramArr_Del 'color-mode=black_and_white'
+               paramArr_Del 'color-mode=mixed'
+               paramArr+=('color-mode=color_grayscale')
+               paramArr+=('normalize-illumination')
+               ;;
          esac
        done
+   fi
 fi
 
 # =================================== detect two-step process =================================
 
-if [ "$IMGIMPROVE_LIST" != "" ] && [ "$CLEAR" != "Yes" ]
+if [ "$IMGIMPROVE_LIST" != "" ] && [ "$CLEAR" != "Yes" ] && [ "$SCANTAILOR_DISABLED" != "Yes" ]
   then
     TWOSTEPS="Yes"
 fi
@@ -283,8 +369,7 @@ fi
 
 [[ "$TWOSTEPS" == "Yes" ]] && paramArr+=('pdfbeads-disabled')
 
-echo
-$DEBUG_PARAM "${paramArr[@]}" "${inclexclArr[@]}" 
+[[ "$DEBUG" == "Yes" ]] && { echo; $DEBUG_PARAM "${paramArr[@]}" "${inclexclArr[@]}"; }
 
 echo "|Step 1|"; echo
 $FPP_SCRIPT "${paramArr[@]}" "${inclexclArr[@]}" ; echo
@@ -346,7 +431,8 @@ fi
 # procesar por segunda vez (sólo las páginas con imágenes)
 
 echo "-----------"; echo
-$DEBUG_PARAM "${paramArr[@]}" "${inclexclArr[@]}" 
+
+[[ "$DEBUG" == "Yes" ]] && { echo; $DEBUG_PARAM "${paramArr[@]}" "${inclexclArr[@]}"; }
 
 echo "|Step 2|"; echo
 $FPP_SCRIPT "${paramArr[@]}" "${inclexclArr[@]}"; echo

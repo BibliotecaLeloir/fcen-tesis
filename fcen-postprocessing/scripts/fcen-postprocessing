@@ -26,7 +26,7 @@ get_filelist() {
    then
       for m in "${extensionArr[@]}"
       do
-        [[ "$m" ]] && f=$f$(find "$path"/*$m -type f -printf "%f\n" 2> /dev/null)    #extension var $m cannot be null
+        [[ "$m" ]] && f=$f$(find "$FIND_OPTIONS" "$path"/*$m -type f -printf "%f\n" 2> /dev/null)    #extension var $m cannot be null
       done
       while read -r line
       do
@@ -37,7 +37,7 @@ get_filelist() {
       do
         for m in "${extensionArr[@]}"
         do
-          f=$(find "$path"/*$n$m -type f -printf "%f\n" -quit 2> /dev/null)      #quit: getting only the first match
+          f=$(find "$FIND_OPTIONS" "$path"/*$n$m -type f -printf "%f\n" -quit 2> /dev/null)      #quit: getting only the first match
           [[ "$f" ]] && eval "${targetArrayName}+=(\"$f\")"
         done
       done
@@ -129,6 +129,19 @@ echo "== $me [$(date +%Y-%m-%d\ %T)] =="; echo
  SCANTAILOR_SEGM_CONTENT=""          # Scantailor detect page arguments
  SCANTAILOR_THRESHOLD="--threshold=0"  # Scantailor threshold arguments
  SCANTAILOR_ENABLED="Yes"
+ PRETTY_FORMAT=""
+ SCANTAILOR_FILTERS=""  # 1-6
+ SCANTAILOR_PROJECT_PATH="" # ruta a archivo de proyecto scantailor
+
+ SCANTAILOR_SAVE_PROJECT_MODE="No" # generar proyecto scantailor cuando se procesa
+ SCANTAILOR_LOAD_PROJECT_MODE="No" # cargar opciones de scantailor a partir de un archivo de proyecto scantailor
+                                   # ATENCION: esto hace que scantailor levante los archivos del proyecto y no los
+                                   # indicados por los parametros de este script, sin embargo el resto de los
+                                   # pasos de postproceso (tesserat y pdfbeads) si procesa los archivos indicados
+ SCANTAILOR_PROCESS_AND_EXIT_MODE="No"  # procesa con scantailor y sale (idem)
+ # TODO terminar de ver si todo ok aplicacion de ariables previas
+ # TODO ver a fondo tema renombrado
+ # actualizar a ultimas opciones scantailor profile procesor 
  
  # Tesseract
  TESSERACT_ARGS=""
@@ -139,9 +152,21 @@ echo "== $me [$(date +%Y-%m-%d\ %T)] =="; echo
  PDFBEADS_ARGS="-b JPEG"      # jpeg2 "-b JP2"
  PDFBEADS_ENABLED="Yes"
  PDFBEADS_CLEAR="No"
-
+ PDFBEADS_HOLDS_PROCFILES="No"
  #
  RENAMING_ENABLED="Yes"
+ FIND_OPTIONS=""
+
+# PDF PageLayout (pdfbeads -P option) 
+# (Optional) A name object specifying the page layout shall be used when the document is opened:
+# SinglePage Display one page at a time
+# OneColumn Display the pages in one column
+# TwoColumnLeft Display the pages in two columns, with odd-numbered pages on the left
+# TwoColumnRight Display the pages in two columns, with odd-numbered pages on the right
+# TwoPageLeft(PDF 1.5) Display the pages two at a time, with odd-numbered pages on the left
+# TwoPageRight(PDF 1.5) Display the pages two at a time, with odd-numbered pages on the right
+# Default value: SinglePage.
+
 
 # ============================================================================
 #                         Processing input arguments
@@ -168,13 +193,51 @@ do
         name=*)
             OUT_PDF_NAME="${arg#*=}"
             ;;
+        sct=*)    # si no se proporciona, mas adelante tomara el mismo nombre y ruta del pdf
+            M="${M}sct-path=${arg#*=} "
+            SCT_NAME="${arg#*=}"
+            ;;
         input-extension=*)
-            INPUT_EXT="${arg#*=}"
-            INPUT_EXT=${INPUT_EXT//\*/} # remove '*' from string
+            if [ ! -z "${arg#*=}" ]
+             then
+              M="${M}$arg "
+              INPUT_EXT="${arg#*=}"
+              INPUT_EXT=${INPUT_EXT//\*/} # remove '*' from string
+              INPUT_EXT=${INPUT_EXT//\ /} # remove ' ' from string
+              INPUT_EXT=${INPUT_EXT//\,/\ \.} # replace ',' -> ' .'
+              INPUT_EXT=".$INPUT_EXT"
+            fi
             ;;
         scantailor-disabled)
             M="${M}scantailor-disabled "
             SCANTAILOR_ENABLED="No"
+            ;;
+        scantailor-save-project)
+            M="${M}scantailor-save-project "
+            SCANTAILOR_SAVE_PROJECT_MODE="Yes"
+            ;;
+        scantailor-load-project)
+            M="${M}scantailor-load-project "
+            SCANTAILOR_LOAD_PROJECT_MODE="Yes"
+            ;;
+        scantailor-process-and-exit) 
+            M="${M}scantailor-process-and-exit "
+            SCANTAILOR_PROCESS_AND_EXIT_MODE="Yes"
+            ;;
+        scantailor-filters=*) 
+            M="${M}scantailor-filters=${arg#*=} "
+            filtros=${arg#*=}
+            filtros=(${filtros//,/ })
+            SC_START_FILTER=${filtros[0]}
+            SC_END_FILTER=${filtros[1]}
+            if [ "$SC_START_FILTER" != "" ] && [ "$SC_END_FILTER" != "" ]
+             then
+              SCANTAILOR_FILTERS="Yes"
+            fi
+            ;;
+        pretty-format)
+            M="${M}pretty-format "
+            PRETTY_FORMAT="Yes"
             ;;
         tesseract-disabled)
             M="${M}tesseract-disabled "
@@ -273,6 +336,10 @@ do
             M="${M}color-mode=${arg#*=} "
             SCANTAILOR_CMODE="${SCANTAILOR_CMODE}--color-mode=${arg#*=} "
             ;;
+        normalize-illumination)
+            M="${M}normalize-illumination "        
+            SCANTAILOR_CMODE="${SCANTAILOR_CMODE}--normalize-illumination --white-margins "
+            ;;
         include=*)
             M="${M}include=${arg#*=} "
             INCLUDE_FILES="${arg#*=}" #ToDo
@@ -322,8 +389,35 @@ do
             M="${M}pdfbeads-clear "
             PDFBEADS_CLEAR="Yes"
             ;;
+        pdfbeads-holds-procfiles)
+            M="${M}pdfbeads-holds-procfiles "
+            PDFBEADS_HOLDS_PROCFILES="Yes"
+            ;;
+        pdfbeads-layout=*)
+            M="${M}pdfbeads-layout=${arg#*=} "
+            PDFBEADS_ARGS=$PDFBEADS_ARGS" --pagelayout ${arg#*=}"
+            ;;
+        pdfbeads-force)
+            M="${M}pdfbeads-force "
+            PDFBEADS_ARGS=$PDFBEADS_ARGS"  --force-update"
+            ;;
+        follow-symbolic-links)
+            M="${M}follow-symbolic-links "
+            FIND_OPTIONS="-L"
+            ;;
         clear)
-            CLEAR="Yes"
+            CLEAR_TMP="Yes"
+            CLEAR_PDF="Yes"
+            CLEAR_SCANTAILOR="Yes"
+            ;;
+        clear-tmp)
+            CLEAR_TMP="Yes"
+            ;;
+        clear-pdf)
+            CLEAR_PDF="Yes"
+            ;;
+        clear-scantailor)
+            CLEAR_SCANTAILOR="Yes"
             ;;
         *)
             # BADARGS="Yes"
@@ -340,6 +434,10 @@ done
 # PDF out file
 [[ -z "$OUT_PDF_DIR" ]] && OUT_PDF_DIR="${WORKING_BASE}"
 [[ -z "$OUT_PDF_NAME" ]] && OUT_PDF_NAME="tesis.pdf"
+
+# scantailor project file
+[[ -z "$SCT_NAME" ]] && SCT_NAME="${OUT_PDF_NAME%.*}.scantailor"
+SCANTAILOR_PROJECT_PATH="${OUT_PDF_DIR}/${SCT_NAME}"
 
 # Log paths
 fpr=$(date +%s)
@@ -358,23 +456,32 @@ STATS_PATH="$sSTATS_PATH-$fpr"
 LOG_PATH="$sLOG_PATH-$fpr"
 RENAMED_PATH="$sRENAMED_PATH-$fpr"
 
+CPU_INFO="${OUT_LOGS_DIR}/CPU_INFO"
+
+#pretty format
+if [ "$PRETTY_FORMAT" == "Yes" ]
+ then
+   PFbacksp="\b\b\b\b\b\b\b\b\b\b"
+   PFforwsp='          '
+   PFzero=' [ 00.00%]'
+   PFformat='[% 6.2f%%]'
+fi
+
 # ============================================================================
 #                          Clear & exit if "clear" option
 # ============================================================================
 
-if [ "$CLEAR" == "Yes" ]
+if [ "$CLEAR_TMP" == "Yes" ]
  then
-  # ==== CLEAR & EXIT =====
-  echo "clear folders:"
+  echo "clear tmp folders:"
   d="$WORKING_BASE"
   cd "$d"
   for p in "$PROC_DIR" "$PREPROC_DIR"
   do
     [[ -d "$p" ]] && { echo " [!] clear $p in $d"; rm -fR "$p" || exit 0; }
   done
-  echo "clear files:"
-  for f in "$OUT_PDF_DIR/$OUT_PDF_NAME" \
-    "$sOCR_ERROR_PATH-"* \
+  echo "clear log files:"
+  for f in "$sOCR_ERROR_PATH-"* \
     "$sLOG_PATH-"* \
     "$sSTATS_PATH-"* \
     "$sSCT_ERROR_PATH-"* \
@@ -382,7 +489,37 @@ if [ "$CLEAR" == "Yes" ]
   do
     [[ -f "$f" ]] && { echo " [!] clear $f"; rm -f "$f" || exit 0; }
   done
-  echo -e "\nclear OK, exit...\n"
+fi
+
+if [ "$CLEAR_PDF" == "Yes" ]
+ then
+  echo "clear pdf files:"
+  PDF_FILES=$(ls -d "${OUT_PDF_DIR}"/* | grep .pdf)
+  if "$PDF_FILES"
+   then
+     while read -r line
+     do
+       rm -f "$line"
+     done <<< "$PDF_FILES"
+  fi
+fi
+
+if [ "$CLEAR_SCANTAILOR" == "Yes" ]
+ then
+  echo "clear scantailor files:"
+  SCANTAILOR_FILES=$(ls -d "${OUT_PDF_DIR}"/* | grep .scantailor)
+  if "$SCANTAILOR_FILES"
+   then
+     while read -r line
+     do
+       rm -f "$line"
+     done <<< "$SCANTAILOR_FILES"
+  fi
+fi
+
+if [ "$CLEAR_TMP" == "Yes" ] || [ "$CLEAR_PDF" == "Yes" ] || [ "$CLEAR_SCANTAILOR" == "Yes" ]
+ then
+  echo "exit..."
   exit 0
 fi
 
@@ -395,6 +532,12 @@ fi
 [[ -d "$WORKING_BASE/$PROC_DIR" ]] || { mkdir "$WORKING_BASE/$PROC_DIR" || exit 0; }
 [[ "$PRE_FILTER" == "Yes" ]] && [[ ! -d "$WORKING_BASE/$PREPROC_DIR" ]] && { mkdir "$WORKING_BASE/$PREPROC_DIR" || exit 0; }
 [[ -d "$OUT_LOGS_DIR" ]] || { echo "[ERROR] no existe $OUT_LOGS_DIR"; exit 0;}
+
+if [ "$SCANTAILOR_LOAD_PROJECT_MODE" == "Yes" ]
+ then
+   [[ -f "$SCANTAILOR_PROJECT_PATH" ]] || 
+     { echo "[ERROR] No se puede cargar proyecto scantailor: '$SCANTAILOR_PROJECT_PATH' no existe"; exit 0; }
+fi
 
 #  exec > "$LOG_PATH" # stdout to logfile
 #  exec > >(tee -a "$LOG_PATH") # stdout to term & logfile (default)
@@ -418,6 +561,10 @@ printf " Logs dir: $OUT_LOGS_DIR\n" ) >> "$LOG_PATH"
 cd "$SOURCE_DIR"
 
 declare -a srcFiles
+echo -n "Find "
+[[ -z "$INCLUDE_FILES" ]] && echo -n "all files " || echo -n "'$INCLUDE_FILES' "
+echo -n "with '$INPUT_EXT' extensions "
+
 #Todo: verificar funcionamiento include Y exclude a la vez
 if [ "$EXCLUDE_FILES" ]
  then
@@ -427,13 +574,25 @@ if [ "$EXCLUDE_FILES" ]
    get_filelist "exclFiles" "." "$INPUT_EXT" "$EXCLUDE_FILES"
    exclude_files "srcFiles" allFiles[@] exclFiles[@]
    unset allFiles exclFiles
+   echo -n "and excluding '$EXCLUDE_FILES' "
  else
    get_filelist "srcFiles" "." "$INPUT_EXT" "$INCLUDE_FILES"             #if INCLUDE_FILES == "" get_filelist get all files in dir
 fi
+echo -n "in '$SOURCE_DIR' ..${#srcFiles[@]} files obtained .."
 
 #alt method -> shopt -s nullglob; srcFiles=($INPUT_EXT); shopt -u nullglob;
 
-if [ -z $srcFiles ] ; then echo "ERROR: no hay archivos para procesar en $SOURCE_DIR" | tee -a "$LOG_PATH"; exit 0; fi
+if [ "$SCANTAILOR_ENABLED" == "Yes" ] || [ "$PRE_FILTER" == "Yes" ]
+ then
+  if [ -z $srcFiles ]
+   then
+     echo ""
+     echo "ERROR: no hay archivos para ser procesados por scantailor o pre-filtros en '$SOURCE_DIR'" | tee -a "$LOG_PATH"
+     exit 1
+  fi
+fi
+
+echo "done"
 
 # OJO este if da falso con array=('' foo)
 
@@ -493,7 +652,7 @@ if [ "$PRE_FILTER" == "Yes" ]
          let nFilter=nFilter+1
    done
 else
-   echo "no prefilter"
+   echo "No prefilter required."
 fi
 
 # ============================================================================
@@ -510,20 +669,69 @@ else
    stailorFiles=("${srcFiles[@]}")
 fi
 
-
 if [ "$SCANTAILOR_ENABLED" == "Yes" ]
 then
 
    printf "\n============ SCANTAILOR ============\n" >> "$LOG_PATH"
 
-   CMD_SCANTAILOR='"$SE_BIN" -v $SCANTAILOR_LMODE $SCANTAILOR_SEGM_PAGE $SCANTAILOR_SEGM_CONTENT $SCANTAILOR_THRESHOLD $SCANTAILOR_CMODE "${stailorFiles[@]}" "$WORKING_BASE/$PROC_DIR/"'
+   echo "Removing Scantailor mask files if any..."
+   newl=""
+   for f in "${srcFiles[@]}" 
+    do 
+       fname="${f%.*}"
+       maskfile="$WORKING_BASE/$PROC_DIR/cache/automask/${fname}${TIFF_EXT}"
+       speckfile="$WORKING_BASE/$PROC_DIR/cache/speckles/${fname}${TIFF_EXT}"
+       [[ -f "$maskfile" ]] && 
+            { echo "removing '$PROC_DIR/cache/automask/${fname}${TIFF_EXT}'" | tee -a "$LOG_PATH"; rm "$maskfile" 2> >(tee "$SCT_ERROR_PATH" >&2); } 
+       [[ -f "$speckfile" ]] && 
+            { echo "removing '$PROC_DIR/cache/speckles/${fname}${TIFF_EXT}'" | tee -a "$LOG_PATH"; rm "$speckfile" 2> >(tee "$SCT_ERROR_PATH" >&2); }
+   done
+   echo ""
+     
+   if   [ "$SCANTAILOR_LOAD_PROJECT_MODE" == "Yes" ]
+    then
+       echo "loading scantailor project from '$SCANTAILOR_PROJECT_PATH'" | tee -a "$LOG_PATH"
+       CMD_SCANTAILOR='"$SE_BIN" -v '
+       [[ "$SCANTAILOR_FILTERS" == "Yes" ]] &&
+          CMD_SCANTAILOR+='--start-filter=$SC_START_FILTER --end-filter=$SC_END_FILTER '
+       CMD_SCANTAILOR+='"$SCANTAILOR_PROJECT_PATH" '
+       CMD_SCANTAILOR+='"$WORKING_BASE/$PROC_DIR/"'
+   else
+       CMD_SCANTAILOR='"$SE_BIN" -v '
+       CMD_SCANTAILOR+='$SCANTAILOR_LMODE '
+       CMD_SCANTAILOR+='$SCANTAILOR_SEGM_PAGE '
+       CMD_SCANTAILOR+='$SCANTAILOR_SEGM_CONTENT '
+       CMD_SCANTAILOR+='$SCANTAILOR_THRESHOLD '
+       CMD_SCANTAILOR+='$SCANTAILOR_CMODE '
+       [[ "$SCANTAILOR_SAVE_PROJECT_MODE" == "Yes" ]] &&
+          CMD_SCANTAILOR+='--output-project="$SCANTAILOR_PROJECT_PATH" '
+       [[ "$SCANTAILOR_FILTERS" == "Yes" ]] &&
+          CMD_SCANTAILOR+='--start-filter=$SC_START_FILTER --end-filter=$SC_END_FILTER '
+       CMD_SCANTAILOR+='"${stailorFiles[@]}" '
+       CMD_SCANTAILOR+='"$WORKING_BASE/$PROC_DIR/"'
+   fi
+   
    CMD_SCANTAILOR_EXPANDED=$(eval "echo $CMD_SCANTAILOR")
    printf "[CMD]:\n $CMD_SCANTAILOR_EXPANDED \n" >> "$LOG_PATH"
 
    t=`date +%s`
-
-   echo -n "Scantailor processing"
-   eval $CMD_SCANTAILOR > >(tee -a "$LOG_PATH") 2> >(tee "$SCT_ERROR_PATH" >&2) | awk '{ printf "." }'; echo -n "done"
+   if [ "$PRETTY_FORMAT" == "Yes" ]
+    then
+       echo -n "Scantailor processing $PFzero"
+       [[ "$SCANTAILOR_FILTERS" == "Yes" ]] &&
+          let SC_X_FILTERS=$SC_END_FILTER-$SC_START_FILTER+1 ||
+          let SC_X_FILTERS=6 ;
+       let stItems=${#stailorFiles[@]}*${SC_X_FILTERS}+${SC_X_FILTERS}
+       awkcom=""
+       eval stdbuf -i0 -o0 -e0 $CMD_SCANTAILOR > >(tee -a "$LOG_PATH") 2> >(tee "$SCT_ERROR_PATH" >&2)  | awk -W interactive 'BEGIN{ k=100/'"$stItems"'; b="'"$PFbacksp"'" } { printf("%s", b); printf(".'"$PFforwsp"'"); printf("%s '"$PFformat"'", b, i); i=i+k }'
+       printf $PFbacksp
+       echo -n " done"
+      # stdbuf -i0 -o0 -e0 http://unix.stackexchange.com/questions/25372/turn-off-buffering-in-pipe
+      # -W interactive http://unix.stackexchange.com/questions/33650/why-does-awk-do-full-buffering-when-reading-from-a-pipe
+   else
+        echo -n "Scantailor processing.."
+        eval $CMD_SCANTAILOR > >(tee -a "$LOG_PATH") 2> >(tee "$SCT_ERROR_PATH" >&2) | awk '{ printf "." }'; echo -n "done"
+   fi
       # http://stackoverflow.com/questions/692000/how-do-i-write-stderr-to-a-file-while-using-tee-with-a-pipe
 
    #eval $CMD_SCANTAILOR
@@ -534,6 +742,16 @@ then
 
    echo
 
+   if [ "$SCANTAILOR_PROCESS_AND_EXIT_MODE" == "Yes" ]
+    then
+        # SCANTAILOR_PROCESS_AND_EXIT_MODE es "scantailor-process-**and-exit**" ignorando opciones de pdfbeads o tesseract
+        PDFBEADS_ENABLED="No"
+        PDFBEADS_CLEAR="No"
+        TESSERACT_ENABLED="No"
+        RENAMING_ENABLED="No"
+   fi
+else
+   echo "Scantailor disabled."
 fi
 
 # ============================================================================
@@ -565,7 +783,9 @@ then
      fi
    done
 
-   if [ "$RENAMING" == "Yes" ]; then echo "done"; else echo " - no file had to be renamed"; fi
+   if [ "$RENAMING" == "Yes" ]; then echo "done"; else echo " - No file had to be renamed."; fi
+else
+   echo "Renaming disabled."
 fi
 
 # ============================================================================
@@ -574,21 +794,31 @@ fi
 
 # we are in "$WORKING_BASE/$PROC_DIR/" from previous
 
-declare -a procFiles
+ # only for tesseract, pdfbeads process all existing .tif file in $PROC_DIR 
+ # except PDFBEADS_HOLDS_PROCFILES == "Yes"
 
-if [ "$EXCLUDE_FILES" ]
+if [ "$TESSERACT_ENABLED" == "Yes" ] || [ "$PDFBEADS_ENABLED" == "Yes" ]
  then
-   declare -a allFiles
-   get_filelist "allFiles" "." "$TIFF_EXT" "$INCLUDE_FILES" #antes era ''. testear!!
-   declare -a exclFiles
-   get_filelist "exclFiles" "." "$TIFF_EXT" "$EXCLUDE_FILES"
-   exclude_files "procFiles" allFiles[@] exclFiles[@]
-   unset allFiles exclFiles
- else
-   get_filelist "procFiles" "." "$INPUT_EXT" "$INCLUDE_FILES"             #if INCLUDE_FILES == "" get_filelist get all files in dir
-fi
+    declare -a procFiles
 
-if [ -z $procFiles ] ; then echo "ERROR: no hay archivos para procesar en $PROC_DIR" | tee -a "$LOG_PATH"; exit 0; fi
+    if [ "$EXCLUDE_FILES" ]
+     then
+       declare -a allFiles
+       get_filelist "allFiles" "." "$TIFF_EXT" "$INCLUDE_FILES" #antes era ''. testear!!
+       declare -a exclFiles
+       get_filelist "exclFiles" "." "$TIFF_EXT" "$EXCLUDE_FILES"
+       exclude_files "procFiles" allFiles[@] exclFiles[@]
+       unset allFiles exclFiles
+    else
+       get_filelist "procFiles" "." "$INPUT_EXT" "$INCLUDE_FILES"          #if INCLUDE_FILES == "" get_filelist get all files in dir
+    fi
+
+    if [ -z $procFiles ]
+     then
+       echo "ERROR: no hay archivos para ser procesados por tesseract en '$PROC_DIR'" | tee -a "$LOG_PATH"
+       exit 0
+    fi
+fi
      
 # ============================================================================
 #                                  TESSERACT
@@ -598,17 +828,24 @@ if [ "$TESSERACT_ENABLED" == "Yes" ]
 then
    printf "\n============ TESSERACT =============\n" >> "$LOG_PATH"
 
-   echo -n "Tesseract processing"
+   echo -n "Tesseract processing ${PFzero}"
 
    t=`date +%s`; c=0
+   if [ "$PRETTY_FORMAT" == "Yes" ]
+    then
+      percent=0
+      if [[ ${#procFiles[@]} != 0 ]]
+        then
+          step=$(bc <<< "scale=2; 100/${#procFiles[@]}")
+       fi
+   fi
    for i in "${procFiles[@]}" 
    do 
       let c=c+1 
-
       if [ -f "`basename "$i" "$TIFF_EXT"`.html" ] && [ "$TESSERACT_OVERWRITE" != "Yes" ]
       then
          printf "[$c]:\n$i previous OCR exist and tesseract overwrite option is disabled\n" >> "$LOG_PATH";
-         echo -n "x" 
+         printf "${PFbacksp}x${PFforwsp}" 
       else
         CMD_TESSERACT='tesseract "$i" "`basename "$i" "$TIFF_EXT"`" -l spa $TESSERACT_ARGS hocr logfile'
         # about logfile -> https://github.com/tesseract-ocr/tesseract/blob/master/tessdata/configs/logfile
@@ -619,25 +856,35 @@ then
         d=`date +%s`; eval $CMD_TESSERACT 1>/dev/null # 1>/dev/null = quiet exec
         printf "Time: "$(expr `date +%s` - $d)"s\n" >> "$LOG_PATH"
         
-        out=$(cat "tesseract.log")
+        [[ -f "tesseract.log" ]] && out=$(cat "tesseract.log") || out=""
         if [ "$(echo "$out" | wc -l)" -gt "2" ] #two lines log or more (usual no error log is eg. "page0")
          then
-           echo -n "!"
+           printf "${PFbacksp}!${PFforwsp}"
            echo "- Warnings -" >> "$LOG_PATH"
            echo "file $c $i [$(date +%Y-%m-%d_%T)]:" >> "$OCR_ERROR_PATH"
            printf "$out\n\n" >> "$OCR_ERROR_PATH"
          else
-           echo -n "." 
+           printf "${PFbacksp}.${PFforwsp}" 
+        fi
+        
+        if [ "$PRETTY_FORMAT" == "Yes" ]
+         then
+           percent=$(bc <<< "$percent + $step")
+           printf "${PFbacksp}"
+           echo $percent | awk '{printf " '"$PFformat"'", $1}'
         fi
       fi
       
    done
-   echo -n "done"
+   printf "${PFbacksp}"
+   echo -n " done"
    TesseractTime=$(expr `date +%s` - $t); echo -n " - ${TesseractTime}s - $c pages";
    NumberOfPages=$c
 
    { [[ -f "$OCR_ERROR_PATH" ]] && [[ ! -s "$OCR_ERROR_PATH" ]]; } && { rm "$OCR_ERROR_PATH"; echo -n "No errors" ;}
    echo
+else
+   echo "Tesseract disabled."
 fi
 
 # ============================================================================
@@ -648,43 +895,60 @@ fi
 if [ "$PDFBEADS_CLEAR" == "Yes" ]
  then
   # ==== CLEAR PDFBEADS ===== ToDo: reemplazar por funcion get_filelist!
-  echo "CLEAR PDFBEADS "
+  echo "Clear PDFbeads "
   echo
   rmEXT='*.tiff *.jpg *.jbig2 *.sym'
   shopt -s nullglob; 
   rmFiles=($rmEXT); 
   shopt -u nullglob;
 
-  for f in "${rmFiles[@]}"
-  do
-    echo "rm $f"
-    rm "$f"
-  done
+  if [ ! -z $rmFiles ]
+   then
+     for f in "${rmFiles[@]}"
+     do
+       echo "rm $f"
+       rm "$f"
+     done
+  else
+     echo " - no files to clear"
+  fi
 fi
 
 # statement: PDFBeads process does not comply with exclude/include param, process all existing .tif file in $PROC_DIR
+#            except 'pdfbeads-holds-procfiles' parameter is enabled
 
 if [ "$PDFBEADS_ENABLED" == "Yes" ]
 then
    printf "\n============ PDFBEADS ==============\n" >> "$LOG_PATH"
 
-   # note: pdfbeads bugs -> http://ssdigit.nothingisreal.com/2012/09/experiences-with-pdfbeads.html
-
-   #pdfbeadsFiles=(*.tif)
-   #CMD_PDFBEADS='pdfbeads $PDFBEADS_ARGS "${pdfbeadsFiles[@]}" > "$OUT_PDF_DIR/$OUT_PDF_NAME"'
-
-   #echo "[CMD]:"; echo $(eval "echo $CMD_PDFBEADS"); echo
-
    t=`date +%s`
 
-   # eval $CMD_PDFBEADS 2>&1 
+   if [[ "$PDFBEADS_HOLDS_PROCFILES" == "Yes" ]]
+    then
+       printf "[CMD]:\npdfbeads $PDFBEADS_ARGS ${procFiles[@]} > $OUT_PDF_DIR/$OUT_PDF_NAME\n" >> "$LOG_PATH"
+       echo -n "PDFbeads processing (holds procfiles)"
+       (pdfbeads $PDFBEADS_ARGS ${procFiles[@]} >"$OUT_PDF_DIR/$OUT_PDF_NAME" 2> >(tee -a "$LOG_PATH" >&2)) 2>&1 | awk -W interactive '{ printf "." }'
+       echo -n "done"
+   else
+       # note: pdfbeads bugs -> http://ssdigit.nothingisreal.com/2012/09/experiences-with-pdfbeads.html
 
-   printf "[CMD]:\npdfbeads $PDFBEADS_ARGS *$TIFF_EXT > $OUT_PDF_DIR/$OUT_PDF_NAME\n" >> "$LOG_PATH"
-   echo -n "PDFbeads processing"
-   (pdfbeads $PDFBEADS_ARGS *$TIFF_EXT >"$OUT_PDF_DIR/$OUT_PDF_NAME" 2> >(tee -a "$LOG_PATH" >&2)) 2>&1 | awk '{ printf "." }'
-   echo -n "done"
+       #pdfbeadsFiles=(*.tif)
+       #CMD_PDFBEADS='pdfbeads $PDFBEADS_ARGS "${pdfbeadsFiles[@]}" > "$OUT_PDF_DIR/$OUT_PDF_NAME"'
+
+       #echo "[CMD]:"; echo $(eval "echo $CMD_PDFBEADS"); echo
+       # eval $CMD_PDFBEADS 2>&1 
+
+       printf "[CMD]:\npdfbeads $PDFBEADS_ARGS *$TIFF_EXT > $OUT_PDF_DIR/$OUT_PDF_NAME\n" >> "$LOG_PATH"
+       echo -n "PDFbeads processing"
+       (pdfbeads $PDFBEADS_ARGS *$TIFF_EXT >"$OUT_PDF_DIR/$OUT_PDF_NAME" 2> >(tee -a "$LOG_PATH" >&2)) 2>&1 | awk -W interactive '{ printf "." }'
+       echo -n "done"
+   fi
+   
    PdfbeadsTime=$(expr `date +%s` - $t); echo " - ${PdfbeadsTime}s";
+else
+   echo "pdfbeads disabled"
 fi
+
 
 # ============================================================================
 # ============================================================================
@@ -702,6 +966,7 @@ printf "PdfbeadsTime:   $PdfbeadsTime\n"
 printf "TotalTime:      $TotalTime\n"
 printf "AverageTime:    $AverageTime\n" ) | tee "$STATS_PATH" >> "$LOG_PATH"
 
+cat /proc/cpuinfo > "$CPU_INFO"
 
 # # [[ $str == *['!'@#\$%^\&*()_+]* ]]
 
