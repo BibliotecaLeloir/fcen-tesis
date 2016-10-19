@@ -87,9 +87,9 @@ echo "== $me [$(date +%Y-%m-%d\ %T)] =="; echo
 
 # Paths to executables
 
- SE_BIN="/opt/src/scantailor-enhanced/scantailor-cli" #Scantailor enhanced exec path
+ SE_BIN="scantailor-cli" #Scantailor enhanced exec path
 
-[[ -f $SE_BIN ]] && echo "scantailor-enhanced bin path ok" || { echo "scantailor-enhanced no se encuentra en la ruta por defecto"; exit 1; }
+$SE_BIN --help >/dev/null 2>&1 || { echo >&2 "No se encuentra scantailor-cli.  Aborting."; exit 1; }
 
  FILTER_BIN_DIR="$( dirname "${BASH_SOURCE[0]}" )/filters" #"~/bin/filters" /imagemagick/hpass
 
