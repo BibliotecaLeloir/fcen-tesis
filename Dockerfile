@@ -1,20 +1,13 @@
 FROM debian:jessie
 MAINTAINER Pablo Montepagano <pablo@montepagano.com.ar>
-ENV http_proxy http://proxy.fcen.uba.ar:8080/
+
+# https://docs.docker.com/engine/reference/builder/#/arg
+ARG proxy=
+ENV http_proxy=$proxy
 
 # Update the package repository
-RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
-	DEBIAN_FRONTEND=noninteractive apt-get install -y wget curl locales
-
-# Configure timezone and locale
-RUN echo "America/Argentina/Buenos_Aires" > /etc/timezone && \
-	dpkg-reconfigure -f noninteractive tzdata
-RUN export LANGUAGE=en_US.UTF-8 && \
-	export LANG=en_US.UTF-8 && \
-	export LC_ALL=en_US.UTF-8 && \
-	locale-gen en_US.UTF-8 && \
-	DEBIAN_FRONTEND=noninteractive dpkg-reconfigure locales
-
+RUN apt-get update && \
+	apt-get install -y wget curl
 
 ## Instalar Tesseract
 RUN apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa tesseract-ocr-spa-old tesseract-ocr-equ
@@ -65,4 +58,9 @@ RUN gem install pdfbeads
 
 ADD fcen-postprocessing /fcen-postprocessing
 RUN chmod 0755 /fcen-postprocessing
-CMD ["bash"]
+
+WORKDIR /
+
+VOLUME /srv/tiff
+VOLUME /srv/ocr
+ENTRYPOINT ["/fcen-postprocessing/scripts/profile-processor"]
