@@ -1,6 +1,20 @@
 fcen-tesis
 ----------
 
+
+Para correr el script lo más fácil es hacerlo con Docker.
+
+Para armar el container, correr:
+
+    docker build -t fcenbiblioteca/ocr:v0 .
+
+Agregar `--build-arg proxy=http://proxy.fcen.uba.ar:8080` si estás atrás del proxy de la FCEN.
+
+Luego, para correr el OCR de una tesis que esté en /srv/tiff y escribir el output a /srv/ocr, hacer:
+
+    docker run --rm -t -i -v /srv/tiff:/srv/tiff -v /srv/ocr:/srv/ocr fcenbiblioteca/ocr:v0 "src=/srv/tiff/" "wrk=/srv/ocr/" "name=Tesis_2680_Castro" "dir=Tesis_2680_Castro" "imgimprove=0021"
+
+
 *Entorno de software utilizado:*
 
 #### Scantailor Enhanced: ####
@@ -22,7 +36,7 @@ Compilar: [Compilar e Instalar tesseract-ocr en Debian](http://codex.bibliohack.
 
 - [Instrucciones paso a paso para instalar PDFBeads en Debian](http://codex.bibliohack.tk/pdfbeads/)
 - [Página de Pdfbeads en rubygems.org](https://rubygems.org/gems/pdfbeads)
- 
+
 #### ImageMagick: ####
 
 Para instalar en Debian/Ubuntu:
