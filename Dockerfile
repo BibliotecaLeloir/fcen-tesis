@@ -56,11 +56,11 @@ ENV GEM_PATH /usr/local/rvm/gems/ruby-1.9.3-p551:/usr/local/rvm/gems/ruby-1.9.3-
 RUN gem install pdfbeads
 
 
-ADD fcen-postprocessing /fcen-postprocessing
-RUN chmod 0755 /fcen-postprocessing
-
 WORKDIR /
 
 VOLUME /srv/tiff
 VOLUME /srv/ocr
+
+ADD fcen-postprocessing /fcen-postprocessing
+RUN chmod 0755 /fcen-postprocessing
 ENTRYPOINT ["/fcen-postprocessing/scripts/profile-processor"]
