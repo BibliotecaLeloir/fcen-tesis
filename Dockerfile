@@ -1,62 +1,76 @@
 FROM debian:jessie
 MAINTAINER Pablo Montepagano <pablo@montepagano.com.ar>
 
-# https://docs.docker.com/engine/reference/builder/#/arg
-ARG proxy=
-ENV http_proxy=$proxy
 
-# Update the package repository
-RUN apt-get update && \
-	apt-get install -y wget curl
+RUN apt-get update \
+  && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends \
+  automake \
+  autotools-dev \
+  build-essential \
+  checkinstall \
+  cmake \
+  curl \
+  exactimage \
+  git \
+  gimp \
+  gimp-plugin-registry \
+  imagemagick \
+  libboost-all-dev \
+  libjpeg-dev \
+  libjpeg62-turbo-dev \
+  libldap2-dev \
+  libleptonica-dev \
+  libmagickwand-dev \
+  libpng12-dev \
+  libqt4-dev \
+  libsasl2-dev \
+  libssl-dev \
+  libtiff5-dev \
+  libtool \
+  libxrender-dev \
+  mysql-client \
+  nodejs \
+  poppler-utils \
+  python-dev \
+  tesseract-ocr \
+  tesseract-ocr-eng \
+  tesseract-ocr-spa \
+  tesseract-ocr-spa-old \
+  tesseract-ocr-equ \
+  wget \
+  yarn \
+  zlib1g-dev && \
+  rm -rf /var/lib/apt/lists /var/cache/apt/*
 
-## Instalar Tesseract
-RUN apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa tesseract-ocr-spa-old tesseract-ocr-equ
-
-## Para compilar Scantailor enhanced. https://github.com/scantailor/scantailor/wiki/Building-from-Source-Code-on-Linux-and-Mac-OS-X
-RUN apt-get install -y build-essential cmake checkinstall git
-RUN apt-get install -y --no-install-recommends libqt4-dev
-RUN apt-get install -y libjpeg-dev libtiff5-dev libpng12-dev zlib1g-dev libboost-all-dev libxrender-dev
-# Compilar:
+# Compilar Scantailor Enhanced:
 RUN git clone https://github.com/scantailor/scantailor.git /usr/src/scantailor
 WORKDIR /usr/src/scantailor
 RUN git checkout enhanced && cmake . && make && checkinstall -y
 
-
-## ImageMagick
-RUN apt-get install -y --no-install-recommends imagemagick
-
-## Gimp
-RUN apt-get install -y --no-install-recommends gimp gimp-plugin-registry
-
-## Exactimage http://exactcode.com/opensource/exactimage/
-RUN apt-get install -y exactimage
-
-## PDFBeads http://proyecto.derechoaleer.org/codex/pdfbeads/  y https://rubygems.org/gems/pdfbeads
-
 # JBIG2ENC
-RUN apt-get install -y automake libleptonica-dev libjpeg62-turbo-dev libtiff5-dev libpng12-dev zlib1g-dev  autotools-dev libtool
 RUN git clone https://github.com/agl/jbig2enc.git /usr/src/jbig2enc
 WORKDIR /usr/src/jbig2enc
 RUN ./autogen.sh && ./configure && make && make install
 
-# PDFBeads
+# PDFBeads http://proyecto.derechoaleer.org/codex/pdfbeads/  y https://rubygems.org/gems/pdfbeads
 RUN gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3
-RUN curl -sSL https://get.rvm.io | bash -s stable --ruby=1.9.3
-RUN apt-get install -y --no-install-recommends libmagickwand-dev
+RUN curl -sSL https://raw.githubusercontent.com/rvm/rvm/stable/binscripts/rvm-installer | bash -s stable --ruby=1.9.3
+ENV rvm_bin_path=/usr/local/rvm/bin \
+    GEM_HOME=/usr/local/rvm/gems/ruby-1.9.3-p551 \
+    IRBRC=/usr/local/rvm/rubies/ruby-1.9.3-p551/.irbrc \
+    MY_RUBY_HOME=/usr/local/rvm/rubies/ruby-1.9.3-p551 \
+    rvm_path=/usr/local/rvm \
+    rvm_prefix=/usr/local \
+    PATH=/usr/local/rvm/gems/ruby-1.9.3-p551/bin:/usr/local/rvm/gems/ruby-1.9.3-p551@global/bin:/usr/local/rvm/rubies/ruby-1.9.3-p551/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/rvm/bin \
+    GEM_PATH=/usr/local/rvm/gems/ruby-1.9.3-p551:/usr/local/rvm/gems/ruby-1.9.3-p551@global
+RUN gem install nokogiri -v 1.6.8.1 && \
+    gem install ttfunk -v 1.4.0 && \
+    gem install pdfbeads
 
-ENV rvm_bin_path /usr/local/rvm/bin
-ENV GEM_HOME /usr/local/rvm/gems/ruby-1.9.3-p551
-ENV IRBRC /usr/local/rvm/rubies/ruby-1.9.3-p551/.irbrc
-ENV MY_RUBY_HOME /usr/local/rvm/rubies/ruby-1.9.3-p551
-ENV rvm_path /usr/local/rvm
-ENV rvm_prefix /usr/local
-ENV PATH /usr/local/rvm/gems/ruby-1.9.3-p551/bin:/usr/local/rvm/gems/ruby-1.9.3-p551@global/bin:/usr/local/rvm/rubies/ruby-1.9.3-p551/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/rvm/bin
-ENV GEM_PATH /usr/local/rvm/gems/ruby-1.9.3-p551:/usr/local/rvm/gems/ruby-1.9.3-p551@global
-
-RUN gem install pdfbeads
-
-
-WORKDIR /
+#TODO: usar versión de pdfbeads en https://github.com/ifad/pdfbeads que debería
+#ser compatible con Ruby 2. Se puede instalar usando https://github.com/rdp/specific_install
+# para instalar directamente desde Github
 
 VOLUME /srv/tiff
 VOLUME /srv/ocr
