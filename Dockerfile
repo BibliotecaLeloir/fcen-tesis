@@ -1,6 +1,8 @@
 FROM debian:jessie
 MAINTAINER Pablo Montepagano <pablo@montepagano.com.ar>
 
+ARG http_proxy=
+ENV http_proxy=http://proxy.fcen.uba.ar:8080
 
 RUN apt-get update \
   && apt-get upgrade -y \
