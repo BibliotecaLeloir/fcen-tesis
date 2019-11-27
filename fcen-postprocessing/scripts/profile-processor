@@ -109,6 +109,7 @@ SCANTAILOR_DISABLED=""
 INPUT_EXT=""
 DEBUG=""
 FORCED_COLOR=""
+DELETE_WORK_DIRECTORY_AFTER=""
 
 # ==================================== processing arguments ===================================
 
@@ -216,9 +217,16 @@ while [ $# -ne 0 ]
             paramArr+=('clear-scantailor')
             CLEAR="Yes"
             ;;
+        clear-logs)
+            paramArr+=('clear-logs')
+            CLEAR="Yes"
+            ;;
         clear)
             paramArr+=('clear')
             CLEAR="Yes"
+            ;;
+        delete-work-directory-after)
+            DELETE_WORK_DIRECTORY_AFTER="Yes"
             ;;
     esac
     shift
@@ -454,3 +462,11 @@ echo "-----------"; echo
 
 echo "|Step 2|"; echo
 $FPP_SCRIPT "${paramArr[@]}" "${inclexclArr[@]}"; echo
+
+# ================================= Delete Work Directory =====================================
+
+if [ "$DELETE_WORK_DIRECTORY_AFTER" == "Yes" ]
+  then
+    rm -rf "$WRK_PATH"
+fi
+

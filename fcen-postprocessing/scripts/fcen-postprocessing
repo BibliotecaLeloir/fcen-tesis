@@ -409,6 +409,7 @@ do
             CLEAR_TMP="Yes"
             CLEAR_PDF="Yes"
             CLEAR_SCANTAILOR="Yes"
+            CLEAR_LOGS="Yes"
             ;;
         clear-tmp)
             CLEAR_TMP="Yes"
@@ -418,6 +419,9 @@ do
             ;;
         clear-scantailor)
             CLEAR_SCANTAILOR="Yes"
+            ;;
+        clear-logs)
+            CLEAR_LOGS="Yes"
             ;;
         *)
             # BADARGS="Yes"
@@ -480,6 +484,10 @@ if [ "$CLEAR_TMP" == "Yes" ]
   do
     [[ -d "$p" ]] && { echo " [!] clear $p in $d"; rm -fR "$p" || exit 0; }
   done
+fi
+
+if [ "$CLEAR_LOGS" == "Yes" ]
+ then
   echo "clear log files:"
   for f in "$sOCR_ERROR_PATH-"* \
     "$sLOG_PATH-"* \
@@ -517,7 +525,7 @@ if [ "$CLEAR_SCANTAILOR" == "Yes" ]
   fi
 fi
 
-if [ "$CLEAR_TMP" == "Yes" ] || [ "$CLEAR_PDF" == "Yes" ] || [ "$CLEAR_SCANTAILOR" == "Yes" ]
+if [ "$CLEAR_TMP" == "Yes" ] || [ "$CLEAR_PDF" == "Yes" ] || [ "$CLEAR_SCANTAILOR" == "Yes" ] || [ "$CLEAR_LOGS" == "Yes" ]
  then
   echo "exit..."
   exit 0
@@ -971,3 +979,4 @@ cat /proc/cpuinfo > "$CPU_INFO"
 # # [[ $str == *['!'@#\$%^\&*()_+]* ]]
 
 # https://addons.mozilla.org/es/firefox/addon/hocr-editor/
+
