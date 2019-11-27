@@ -45,11 +45,11 @@ expandDash () {
   local toExpand="$1"
   local -a valArr
   local min max prefix digits i j out
-   
+
   IFS="-" read -ra valArr <<< "$toExpand"
-  
+
   [[ "${valArr[1]}" == "" ]] && return 0
-  
+
   min=${valArr[0]//[^0-9]/}
   max=${valArr[1]//[^0-9]/}
   prefix=${valArr[0]//[0-9]/}
@@ -59,13 +59,13 @@ expandDash () {
   max=$((10#$max))
 
   [[ "$min" -gt "$max" ]] && return 0
-  
+
   for (( i = $min ; i <= $max ; i++ ))
-    do 
+    do
       j=$(printf "%0${digits}d" "$i")
       out="$out""$prefix""$j"","
     done
-    
+
   out="${out%,}"           #remove last ','
   echo "$out"
 }
@@ -75,7 +75,7 @@ processLists () {
   local string="$1"
   local s t out
   local -a tmpArr
-  
+
   IFS="," read -ra tmpArr <<< "$string"
 
   out=""; for s in "${tmpArr[@]}"
@@ -108,6 +108,7 @@ CLEAR=""
 SCANTAILOR_DISABLED=""
 INPUT_EXT=""
 DEBUG=""
+FORCED_COLOR=""
 
 # ==================================== processing arguments ===================================
 
@@ -221,7 +222,7 @@ while [ $# -ne 0 ]
             ;;
     esac
     shift
-  done           
+  done
 
 # ======================================= config paths ========================================
 
@@ -269,7 +270,7 @@ if [ "$SCANTAILOR_DISABLED" != "Yes" ]
       paramArr+=('content-detection-disabled')
       paramArr+=("color-mode=black_and_white")
       paramArr+=('picture-shape=rectangular')
- 
+
       for profile in "${profileArr[@]}"
        do
          case "$profile" in
@@ -286,7 +287,7 @@ if [ "$SCANTAILOR_DISABLED" != "Yes" ]
                paramArr+=('filter-hpass-background')
                ;;
            b2)
-               # ToDo 
+               # ToDo
                ;;
            c1)
                paramArr+=('bolder-text-aggressive')
@@ -311,21 +312,49 @@ if [ "$SCANTAILOR_DISABLED" != "Yes" ]
            g2)
                paramArr+=('filter-invertlevels')
                ;;
+         esac
+       done
+       
+      # Los filtros de colores se procesan aparte del resto para evitar conflictos
+      for profile in "${profileArr[@]}"
+       do
+         case "$profile" in
            q1) # forced color-mixed
                paramArr_Del 'color-mode=black_and_white'
                paramArr_Del 'color-mode=color_grayscale'
                paramArr+=('color-mode=mixed')
+               
+               # filtros incompatibles con color
+               paramArr_FindRepl 'filter-hpass-lowcontrast' 'filter-hpass-min'
+               paramArr_Del 'filter-hpass-background'
+               paramArr_Del 'filter-autolevels'
+               
+               FORCED_COLOR="Yes"
                ;;
            q2) # forced color_grayscale
                paramArr_Del 'color-mode=black_and_white'
                paramArr_Del 'color-mode=mixed'
                paramArr+=('color-mode=color_grayscale')
+               
+               # filtros incompatibles con color
+               paramArr_FindRepl 'filter-hpass-lowcontrast' 'filter-hpass-min'
+               paramArr_Del 'filter-hpass-background'
+               paramArr_Del 'filter-autolevels'
+               
+               FORCED_COLOR="Yes"
                ;;
            q3) # forced color_grayscale normalize illumination
                paramArr_Del 'color-mode=black_and_white'
                paramArr_Del 'color-mode=mixed'
                paramArr+=('color-mode=color_grayscale')
                paramArr+=('normalize-illumination')
+               
+               # filtros incompatibles con color
+               paramArr_FindRepl 'filter-hpass-lowcontrast' 'filter-hpass-min'
+               paramArr_Del 'filter-hpass-background'
+               paramArr_Del 'filter-autolevels'
+               
+               FORCED_COLOR="Yes"
                ;;
          esac
        done
@@ -378,25 +407,14 @@ $FPP_SCRIPT "${paramArr[@]}" "${inclexclArr[@]}" ; echo
 
 [[ "$TWOSTEPS" == "Yes" ]] || exit 0
 
-if [ "$(paramArr_Find 'color-mode=black_and_white')" != "Yes" ]
- then
-   paramArr_FindRepl 'color-mode=black_and_white' 'color-mode=mixed'
- else
-   paramArr+=('color-mode=mixed')
-fi
+if [ "$FORCED_COLOR" != "Yes" ]
+  then
+        paramArr_FindRepl 'color-mode=black_and_white' 'color-mode=color_grayscale'
 
-# si existen, eliminar otros parametros incompatibles con mejora para imagenes
-if [ "$(paramArr_Find 'filter-hpass-lowcontrast')" == "Yes" ]
-  then
-    paramArr_FindRepl 'filter-hpass-lowcontrast' 'filter-hpass-min'
-fi
-if [ "$(paramArr_Find 'filter-hpass-background')" == "Yes" ]
-  then
-    paramArr_Del 'filter-hpass-background'
-fi
-if [ "$(paramArr_Find 'filter-autolevels')" == "Yes" ]
-  then
-    paramArr_Del 'filter-autolevels'
+        # si existen, eliminar otros parametros incompatibles con mejora para imagenes
+        paramArr_FindRepl 'filter-hpass-lowcontrast' 'filter-hpass-min'
+        paramArr_Del 'filter-hpass-background'
+        paramArr_Del 'filter-autolevels'
 fi
 
 paramArr_Del 'pdfbeads-disabled'
